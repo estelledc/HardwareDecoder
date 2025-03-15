@@ -151,12 +151,17 @@ func createDecompressionSession() -> Bool {
     
     // 设置解码参数
     let decoderParameters = NSMutableDictionary()
-    // 启用异步解码模式
-    decoderParameters[kVTDecompressionPropertyKey_RealTime] = false
-    decoderParameters[kVTDecompressionPropertyKey_ThreadCount] = 1
+    // 修改Real-Time设置为true，更适合视频解码
+    decoderParameters[kVTDecompressionPropertyKey_RealTime] = true
+    // 增加线程数提高性能
+    decoderParameters[kVTDecompressionPropertyKey_ThreadCount] = 4
     // 允许硬解码失败时自动回退到软解码
     decoderParameters[kVTVideoDecoderSpecification_EnableHardwareAcceleratedVideoDecoder] = true
     decoderParameters[kVTVideoDecoderSpecification_RequireHardwareAcceleratedVideoDecoder] = false
+    
+    // 添加更多解码器选项，提高兼容性
+    decoderParameters[kVTDecompressionPropertyKey_MaximizeCompatibility] = true
+    decoderParameters[kVTDecompressionPropertyKey_MaximizePowerEfficiency] = false
     
     let destinationImageBufferAttributes = NSMutableDictionary()
     destinationImageBufferAttributes[kCVPixelBufferPixelFormatTypeKey] = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
@@ -170,6 +175,12 @@ func createDecompressionSession() -> Bool {
         decompressionOutputRefCon: UnsafeMutableRawPointer(mutating: nil)
     )
     
+    // 先释放已有的解码会话
+    if let session = decompressionSession {
+        VTDecompressionSessionInvalidate(session)
+        decompressionSession = nil
+    }
+    
     // 创建解码会话
     let status = VTDecompressionSessionCreate(
         allocator: kCFAllocatorDefault,
@@ -182,6 +193,9 @@ func createDecompressionSession() -> Bool {
     
     if status != noErr {
         print("无法创建解码会话，错误码: \(status)")
+    } else {
+        // 设置解码会话属性
+        VTSessionSetProperty(decompressionSession!, key: kVTDecompressionPropertyKey_RealTime, value: kCFBooleanTrue)
     }
     
     return status == noErr
@@ -193,26 +207,43 @@ func addStartCodeToNALU(_ data: Data) -> Data {
     return startCode + data
 }
 
-// 解码H.264 NAL单元
+// 更智能地检查和处理NAL单元数据
+func hasStartCode(_ data: Data) -> Bool {
+    if data.count >= 4 && data[0] == 0x00 && data[1] == 0x00 && data[2] == 0x00 && data[3] == 0x01 {
+        return true
+    }
+    if data.count >= 3 && data[0] == 0x00 && data[1] == 0x00 && data[2] == 0x01 {
+        return true
+    }
+    return false
+}
+
+// 解码H.264 NAL单元的改进版本
 func decodeH264Nalu(data: Data, timestamp: CMTime) {
     guard let session = decompressionSession else {
         print("解码会话不存在")
         return
     }
     
-    // 添加起始码到NAL单元数据
-    let dataWithStartCode = addStartCodeToNALU(data)
+    var nalData = data
+    // 检查数据是否已经包含起始码，没有则添加
+    if !hasStartCode(nalData) {
+        print("NAL单元添加起始码")
+        nalData = addStartCodeToNALU(data)
+    } else {
+        print("NAL单元已包含起始码")
+    }
     
     // 创建包含编码数据的块缓冲区
     var blockBuffer: CMBlockBuffer?
     let status = CMBlockBufferCreateWithMemoryBlock(
         allocator: kCFAllocatorDefault,
         memoryBlock: nil,
-        blockLength: dataWithStartCode.count,
+        blockLength: nalData.count,
         blockAllocator: kCFAllocatorDefault,
         customBlockSource: nil,
         offsetToData: 0,
-        dataLength: dataWithStartCode.count,
+        dataLength: nalData.count,
         flags: 0,
         blockBufferOut: &blockBuffer
     )
@@ -223,12 +254,12 @@ func decodeH264Nalu(data: Data, timestamp: CMTime) {
     }
     
     // 将数据填充到块缓冲区
-    let dataBytes = [UInt8](dataWithStartCode)
+    let dataBytes = [UInt8](nalData)
     let replaceStatus = CMBlockBufferReplaceDataBytes(
         with: dataBytes,
         blockBuffer: blockBuffer!,
         offsetIntoDestination: 0,
-        dataLength: dataWithStartCode.count
+        dataLength: nalData.count
     )
     
     if replaceStatus != kCMBlockBufferNoErr {
@@ -238,7 +269,7 @@ func decodeH264Nalu(data: Data, timestamp: CMTime) {
     
     // 创建采样缓冲区
     var sampleBuffer: CMSampleBuffer?
-    let sampleSizeArray = [dataWithStartCode.count]
+    let sampleSizeArray = [nalData.count]
     
     // 创建时间信息
     var timingInfo = CMSampleTimingInfo(
@@ -267,8 +298,19 @@ func decodeH264Nalu(data: Data, timestamp: CMTime) {
         return
     }
     
+    // 标记关键帧属性
+    let nalType = (nalData[hasStartCode(nalData) ? 4 : 0] & 0x1F)
+    if nalType == 5 { // IDR帧
+        let attachmentsArray = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer!, createIfNecessary: true)!
+        let attachments = unsafeBitCast(CFArrayGetValueAtIndex(attachmentsArray, 0), to: CFMutableDictionary.self)
+        CFDictionarySetValue(attachments, Unmanaged.passUnretained(kCMSampleAttachmentKey_IsDependedOnByOthers).toOpaque(), Unmanaged.passUnretained(kCFBooleanTrue).toOpaque())
+        CFDictionarySetValue(attachments, Unmanaged.passUnretained(kCMSampleAttachmentKey_NotSync).toOpaque(), Unmanaged.passUnretained(kCFBooleanFalse).toOpaque())
+    }
+    
     // 解码帧
-    let decodeFlags = VTDecodeFrameFlags._1xRealTimePlayback
+    print("正在解码NAL类型: \(nalType), 长度: \(nalData.count)字节, 时间戳: \(timestamp.value)")
+    
+    let decodeFlags = VTDecodeFrameFlags(rawValue: 0) // 不使用实时播放标志
     var infoFlags = VTDecodeInfoFlags()
     let decodeStatus = VTDecompressionSessionDecodeFrame(
         session,
@@ -279,8 +321,21 @@ func decodeH264Nalu(data: Data, timestamp: CMTime) {
     )
     
     if decodeStatus != noErr {
-        print("解码帧失败，错误码: \(decodeStatus)")
+        print("解码帧失败，错误码: \(decodeStatus), NAL类型: \(nalType)")
+        
+        // 尝试重置解码会话
+        if decodeStatus == kVTParameterErr {
+            print("参数错误，重置解码会话...")
+            // 重新创建解码会话
+            cleanUp()
+            if createVideoFormatDescription(sps: spsData!, pps: ppsData!) {
+                createDecompressionSession()
+            }
+        }
     }
+    
+    // 等待解码完成
+    VTDecompressionSessionWaitForAsynchronousFrames(session)
 }
 
 // 清理资源
@@ -380,6 +435,10 @@ func extractSPSandPPS(from nalUnits: [(Data, UInt8)]) -> (sps: Data?, pps: Data?
     return (spsData, ppsData)
 }
 
+// 保存全局SPS和PPS数据以便重用
+var spsData: Data?
+var ppsData: Data?
+
 // 主函数示例
 func main() {
     // 检查硬件解码支持
@@ -408,12 +467,16 @@ func main() {
     print("共解析出\(nalUnits.count)个NAL单元")
     
     // 提取SPS和PPS
-    let (spsData, ppsData) = extractSPSandPPS(from: nalUnits)
+    let (extractedSps, extractedPps) = extractSPSandPPS(from: nalUnits)
     
-    guard let sps = spsData, let pps = ppsData else {
+    guard let sps = extractedSps, let pps = extractedPps else {
         print("无法找到SPS或PPS")
         return
     }
+    
+    // 保存到全局变量
+    spsData = sps
+    ppsData = pps
     
     // 使用真实的SPS和PPS创建视频格式描述
     if !createVideoFormatDescription(sps: sps, pps: pps) {
@@ -442,12 +505,25 @@ func main() {
             if nalType == 5 && spsData != nil && ppsData != nil {
                 // 在每个I帧前重新发送SPS和PPS，有助于解决解码问题
                 print("为IDR帧重新发送SPS和PPS")
-                decodeH264Nalu(data: spsData!, timestamp: CMTime.invalid)
-                decodeH264Nalu(data: ppsData!, timestamp: CMTime.invalid)
+                
+                // 重新创建解码会话确保状态干净
+                cleanUp()
+                if !createVideoFormatDescription(sps: spsData!, pps: ppsData!) {
+                    print("无法重新创建视频格式描述")
+                    continue
+                }
+                if !createDecompressionSession() {
+                    print("无法重新创建解码会话")
+                    continue
+                }
             }
             
             let timestamp = CMTime(value: frameIndex, timescale: 30)
             decodeH264Nalu(data: nalData, timestamp: timestamp)
+            
+            // 添加适当的延迟，让解码器处理每一帧
+            usleep(1000) // 1毫秒延迟
+            
             frameIndex += 1
         } else if nalType != 7 && nalType != 8 {  // 不是SPS和PPS的其他类型NAL单元
             let timestamp = CMTime(value: frameIndex, timescale: 30)
