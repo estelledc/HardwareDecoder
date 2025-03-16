@@ -1,3 +1,65 @@
+/**
+ A hardware H.264 video decoder implementation using VideoToolbox framework.
+ 
+ This implementation provides functionality to decode H.264 video streams with both hardware and software fallback capabilities.
+ It includes support for:
+ - H.264 NAL unit parsing and processing
+ - SPS/PPS extraction and handling
+ - Hardware accelerated decoding with software fallback
+ - Frame extraction and PNG image saving
+ - Robust error handling and recovery
+ 
+ # Key Features
+ - Supports both hardware and software H.264 decoding
+ - Handles 1920x1080 resolution video
+ - Processes IDR and non-IDR frames
+ - Saves decoded frames as PNG files
+ - Provides detailed logging and error reporting
+ 
+ # Global Variables
+ - `decompressionSession`: The VideoToolbox decompression session
+ - `formatDescription`: The video format description
+ - `spsData`: Sequence Parameter Set data
+ - `ppsData`: Picture Parameter Set data
+ 
+ # Constants
+ - `kWidth`: Video width (1920)
+ - `kHeight`: Video height (1080)
+ - `kNaluHeaderLength`: NAL unit header length (4)
+ 
+ # Main Components
+ 1. NAL Unit Processing
+ 2. Video Format Description Creation
+ 3. Decompression Session Management
+ 4. Frame Decoding and Saving
+ 5. Error Handling and Recovery
+ 
+ # Usage Example
+ ```swift
+ let filePath = "path/to/video.h264"
+ if let videoData = readH264File(path: filePath) {
+    let nalUnits = parseH264Stream(data: videoData)
+    // Process NAL units and decode frames
+ }
+ ```
+ 
+ # Requirements
+ - iOS/macOS platform with VideoToolbox support
+ - H.264 encoded video input
+ - Sufficient storage for decoded frames
+ 
+ # Notes
+ - The decoder automatically handles both hardware and software decoding paths
+ - Includes automatic recovery from decoder failures
+ - Saves decoded frames to the Desktop/decoded_frames directory
+ 
+ # Warning
+ - Large video files may consume significant memory and storage
+ - Hardware decoder availability varies by device
+ 
+ - Author: TTHD
+ - Date: 2025/3/14
+ */
 //
 //  main.swift
 //  HardwareDecoder
@@ -145,8 +207,8 @@ func createDecompressionSession() -> Bool {
     decoderParameters[kVTDecompressionPropertyKey_ThreadCount] = 1
     
     // 显式设置为软件解码 
-    decoderParameters[kVTVideoDecoderSpecification_EnableHardwareAcceleratedVideoDecoder] = false
-    decoderParameters[kVTVideoDecoderSpecification_RequireHardwareAcceleratedVideoDecoder] = false
+    decoderParameters[kVTVideoDecoderSpecification_EnableHardwareAcceleratedVideoDecoder] = true
+    decoderParameters[kVTVideoDecoderSpecification_RequireHardwareAcceleratedVideoDecoder] = true
     
     // 禁用优化，专注于可靠性
     decoderParameters[kVTDecompressionPropertyKey_MaximizePowerEfficiency] = false
@@ -283,47 +345,31 @@ func decodeH264Nalu(data: Data, timestamp: CMTime) {
         return
     }
     
-    // 深拷贝数据以避免可能的内存问题
     var nalData = data
     
-    // 1. 检查并修复NAL头部
+    // 检查并修复NAL头部
     if !nalData.isEmpty {
         let nalHeader = nalData[0]
         let forbidden_bit = (nalHeader & 0x80) >> 7
         let nal_ref_idc = (nalHeader & 0x60) >> 5
         let nal_unit_type = nalHeader & 0x1F
-        
         print("NAL头详情: forbidden_bit=\(forbidden_bit), nal_ref_idc=\(nal_ref_idc), nal_unit_type=\(nal_unit_type)")
-        
-        // 修复NAL头
         fixNalHeader(&nalData)
     } else {
         print("警告: NAL单元数据为空")
         return
     }
     
-    // 2. 处理起始码
-    let hasStartCodeAlready = hasStartCode(nalData)
-    if !hasStartCodeAlready {
+    // 处理起始码
+    if !hasStartCode(nalData) {
         print("添加起始码")
-        let startCode = Data([0x00, 0x00, 0x00, 0x01])
-        nalData = startCode + nalData
+        nalData = Data([0x00, 0x00, 0x00, 0x01]) + nalData
     }
     
-    // 3. 获取NAL类型
-    let nalHeaderIndex = hasStartCodeAlready ? 
-                        (nalData[3] == 0x01 ? 4 : 3) : 
-                        0
+    // 获取NAL类型
+    let nalType = nalData[hasStartCode(nalData) ? (nalData[3] == 0x01 ? 4 : 3) : 0] & 0x1F
     
-    let nalType: UInt8
-    if nalHeaderIndex < nalData.count {
-        nalType = nalData[nalHeaderIndex] & 0x1F
-    } else {
-        print("错误: 无法确定NAL类型")
-        return
-    }
-    
-    // 4. 创建块缓冲区
+    // 创建块缓冲区
     var blockBuffer: CMBlockBuffer?
     var status = CMBlockBufferCreateWithMemoryBlock(
         allocator: kCFAllocatorDefault,
@@ -342,7 +388,7 @@ func decodeH264Nalu(data: Data, timestamp: CMTime) {
         return
     }
     
-    // 5. 填充数据到块缓冲区
+    // 填充数据到块缓冲区
     status = CMBlockBufferReplaceDataBytes(
         with: [UInt8](nalData),
         blockBuffer: blockBuffer!,
@@ -355,14 +401,14 @@ func decodeH264Nalu(data: Data, timestamp: CMTime) {
         return
     }
     
-    // 6. 创建时间信息
+    // 创建时间信息
     var timingInfo = CMSampleTimingInfo(
         duration: CMTime(value: 1, timescale: 30),
         presentationTimeStamp: timestamp,
         decodeTimeStamp: CMTime.invalid
     )
     
-    // 7. 创建样本缓冲区
+    // 创建样本缓冲区
     var sampleBuffer: CMSampleBuffer?
     let sampleSizeArray = [nalData.count]
     
@@ -386,7 +432,7 @@ func decodeH264Nalu(data: Data, timestamp: CMTime) {
         return
     }
     
-    // 8. 设置关键帧标志
+    // 设置关键帧标志
     if nalType == 5 { // IDR帧
         let attachmentsArray = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer!, createIfNecessary: true)!
         let attachments = unsafeBitCast(CFArrayGetValueAtIndex(attachmentsArray, 0), to: CFMutableDictionary.self)
@@ -394,10 +440,8 @@ func decodeH264Nalu(data: Data, timestamp: CMTime) {
         CFDictionarySetValue(attachments, Unmanaged.passUnretained(kCMSampleAttachmentKey_NotSync).toOpaque(), Unmanaged.passUnretained(kCFBooleanFalse).toOpaque())
     }
     
-    // 9. 执行解码
+    // 执行解码
     print("解码NAL类型: \(nalType), 长度: \(nalData.count)字节")
-    
-    // 使用同步解码模式尝试解码
     let decodeFlags = VTDecodeFrameFlags(rawValue: 0) // 同步解码
     var infoFlags = VTDecodeInfoFlags()
     
@@ -409,36 +453,25 @@ func decodeH264Nalu(data: Data, timestamp: CMTime) {
         infoFlagsOut: &infoFlags
     )
     
-    // 10. 处理解码结果
+    // 处理解码结果
     if decodeStatus != noErr {
         print("解码错误: \(decodeStatus)")
-        
-        // 对特定错误进行处理
         if decodeStatus == -12909 { // kVTVideoDecoderMalfunctionErr
             print("解码器故障，执行紧急恢复...")
-            
-            // 完全重置解码管道
             cleanUp()
-            
-            // 重建格式描述
             if let sps = spsData, let pps = ppsData {
                 if !createVideoFormatDescription(sps: sps, pps: pps) {
                     print("重建格式描述失败")
                     return
                 }
-                
-                // 尝试使用最小化配置创建新的解码会话
                 let emergencyParams = NSMutableDictionary()
                 emergencyParams[kVTVideoDecoderSpecification_EnableHardwareAcceleratedVideoDecoder] = false
-                
                 var outputCallback = VTDecompressionOutputCallbackRecord(
                     decompressionOutputCallback: decompressionOutputCallback,
                     decompressionOutputRefCon: UnsafeMutableRawPointer(mutating: nil)
                 )
-                
                 let imageBufferAttributes = NSMutableDictionary()
                 imageBufferAttributes[kCVPixelBufferPixelFormatTypeKey] = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
-                
                 let emergencyStatus = VTDecompressionSessionCreate(
                     allocator: kCFAllocatorDefault,
                     formatDescription: formatDescription!,
@@ -447,11 +480,8 @@ func decodeH264Nalu(data: Data, timestamp: CMTime) {
                     outputCallback: &outputCallback,
                     decompressionSessionOut: &decompressionSession
                 )
-                
                 if emergencyStatus == noErr && decompressionSession != nil {
                     print("紧急恢复成功，使用最小化软件解码配置")
-                    
-                    // 小延迟后重试当前帧
                     usleep(5000)
                     if nalType == 5 || nalType == 1 {
                         decodeH264Nalu(data: data, timestamp: timestamp)
@@ -567,33 +597,24 @@ func main() {
     let isHardwareSupported = VTIsHardwareDecodeSupported(kCMVideoCodecType_H264)
     print("硬件H.264解码支持: \(isHardwareSupported)")
     
-    // 尝试多个可能的文件路径
-    let possiblePaths = [
-        "~/Desktop/forshare/HardwareDecoder/HardwareDecoder/1.h264",
-        "~/Desktop/forshare/HardwareDecoder/HardwareDecoder/video.h264",
-        "~/Desktop/1.h264",
-        "~/Desktop/video.h264"
-    ]
+    // 确定文件路径
+    let filePath = "~/Desktop/forshare/HardwareDecoder/HardwareDecoder/short.h264"
     
     var videoData: Data? = nil
     var usedPath = ""
     
-    for path in possiblePaths {
-        let fullPath = NSString(string: path).expandingTildeInPath
-        if FileManager.default.fileExists(atPath: fullPath) {
-            print("找到视频文件: \(fullPath)")
-            videoData = readH264File(path: fullPath)
-            usedPath = fullPath
-            break
-        }
+    // 使用确定的路径
+    let fullPath = NSString(string: filePath).expandingTildeInPath
+    if FileManager.default.fileExists(atPath: fullPath) {
+        print("找到视频文件: \(fullPath)")
+        videoData = readH264File(path: fullPath)
+        usedPath = fullPath
     }
     
     if videoData == nil {
-        print("在所有可能的位置都找不到视频文件")
-        print("请将H.264文件放在以下位置之一:")
-        for path in possiblePaths {
-            print("- \(NSString(string: path).expandingTildeInPath)")
-        }
+        print("在指定的位置找不到视频文件")
+        print("请将H.264文件放在以下位置:")
+        print("- \(NSString(string: filePath).expandingTildeInPath)")
         return
     }
     
