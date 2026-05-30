@@ -1,0 +1,79 @@
+/* HardwareDecoder · Tech Utility */
+
+:root[data-system="tech-utility"] {
+  --ink: #c9d1d9;
+  --paper: #0d1117;
+  --accent: #7ee787;
+  --muted: #8b949e;
+  --rule: rgba(255, 255, 255, 0.12);
+  --code-bg: #161b22;
+  --fs-display: 4rem;
+  --fs-h1: 2.5rem;
+  --fs-h2: 1.75rem;
+  --fs-h3: 1.25rem;
+  --fs-body: 1rem;
+  --fs-caption: 0.875rem;
+  --fs-mono: 0.9375rem;
+  --font-serif: "Source Serif Pro", "Noto Serif SC", Georgia, serif;
+  --font-sans: Inter, "PingFang SC", -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", Menlo, Consolas, monospace;
+  --space-3: 1rem;
+  --space-4: 1.5rem;
+  --space-5: 2.5rem;
+  --space-6: 4rem;
+  --reading-width: 68ch;
+}
+
+* { box-sizing: border-box; }
+html { font-size: 16px; }
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: 1.65;
+  color: var(--ink);
+  background: var(--paper);
+}
+
+.shell { max-width: 920px; margin: 0 auto; padding: var(--space-5) var(--space-4); }
+
+.topbar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: var(--space-5);
+}
+.topbar .brand { font-family: var(--font-mono); font-size: var(--fs-caption); letter-spacing: 0.1em; color: var(--accent); text-transform: uppercase; }
+.return-to-hub {
+  font-family: var(--font-mono); font-size: var(--fs-caption); color: var(--muted);
+  text-decoration: none; letter-spacing: 0.05em; text-transform: lowercase;
+  border-bottom: 1px solid transparent; transition: border-color 0.15s, color 0.15s;
+}
+.return-to-hub:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+h1 { font-family: var(--font-mono); font-size: var(--fs-h1); margin: 0 0 var(--space-2); letter-spacing: -0.01em; }
+h2 { font-family: var(--font-mono); font-size: var(--fs-h2); margin: var(--space-5) 0 var(--space-3); color: var(--accent); }
+h3 { font-family: var(--font-mono); font-size: var(--fs-h3); margin: var(--space-4) 0 var(--space-2); }
+.lead { font-size: 1.125rem; color: var(--muted); margin: 0 0 var(--space-5); max-width: var(--reading-width); }
+
+pre, code { font-family: var(--font-mono); font-size: var(--fs-mono); }
+pre { background: var(--code-bg); padding: var(--space-3); border-radius: 6px; overflow-x: auto; border: 1px solid var(--rule); }
+code { background: var(--code-bg); padding: 0.1em 0.4em; border-radius: 3px; }
+pre code { background: transparent; padding: 0; }
+
+.tag-list { list-style: none; padding: 0; display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.tag-list li { font-family: var(--font-mono); font-size: var(--fs-caption); color: var(--muted); border: 1px solid var(--rule); padding: 0.2em 0.6em; border-radius: 3px; }
+
+.callout { border-left: 2px solid var(--accent); background: var(--code-bg); padding: var(--space-3); margin: var(--space-4) 0; }
+
+.mermaid { background: var(--code-bg); padding: var(--space-3); border-radius: 6px; margin: var(--space-4) 0; }
+
+.site-footer { font-family: var(--font-mono); font-size: var(--fs-caption); color: var(--muted); border-top: 1px solid var(--rule); padding: var(--space-4) 0; margin-top: var(--space-6); text-align: center; }
+.site-footer a { color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--rule); }
+.site-footer a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+@media (max-width: 480px) {
+  .shell { padding: var(--space-4) var(--space-3); }
+  h1 { font-size: 2rem; }
+  h2 { font-size: 1.4rem; }
+}

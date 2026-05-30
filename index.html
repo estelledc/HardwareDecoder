@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN" data-system="tech-utility">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HardwareDecoder · H.264 硬件解码器</title>
+  <meta name="description" content="基于 VideoToolbox 的 H.264 硬件解码器课程项目" />
+  <link rel="stylesheet" href="assets/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <span class="brand">HARDWARE_DECODER</span>
+      <a class="return-to-hub" href="https://estelledc.github.io/" rel="home">← estelledc.github.io</a>
+    </header>
+
+    <main>
+      <h1>H.264 硬件解码器</h1>
+      <p class="lead">基于 Apple VideoToolbox 的逐帧 NAL/SPS/PPS 解析与 PNG 帧导出 · Swift 课程实现。</p>
+
+      <ul class="tag-list">
+        <li>Swift</li>
+        <li>VideoToolbox</li>
+        <li>H.264</li>
+        <li>课程项目</li>
+      </ul>
+
+      <h2 id="architecture">架构</h2>
+      <p>解码 pipeline：从 NAL 单元提取参数集，建立硬件解码会话，输出 CVPixelBuffer 后转 PNG。</p>
+
+      <pre class="mermaid">
+flowchart LR
+    A[读取 video.h264] --> B[检查硬解能力]
+    B --> C[扫描 NAL 单元]
+    C --> D[提取 SPS / PPS]
+    D --> E[创建 VTDecompressionSession]
+    E --> F[逐帧 decode]
+    F --> G[CVPixelBuffer]
+    G --> H[导出 PNG]
+      </pre>
+
+      <h2 id="code-highlights">代码亮点</h2>
+
+      <h3>SPS / PPS 提取</h3>
+      <pre><code>// 扫描 NAL 单元 type 7 (SPS) 与 type 8 (PPS)
+let nalType = data[startCodeLen] &amp; 0x1F
+if nalType == 7 { spsData = data.subdata(in: ...) }
+else if nalType == 8 { ppsData = data.subdata(in: ...) }</code></pre>
+
+      <h3>解码会话创建</h3>
+      <pre><code>VTDecompressionSessionCreate(
+    allocator: kCFAllocatorDefault,
+    formatDescription: formatDesc,
+    decoderSpecification: nil,
+    imageBufferAttributes: pixelBufferAttrs,
+    outputCallback: &amp;callbackRecord,
+    decompressionSessionOut: &amp;session)</code></pre>
+
+      <h3>CVPixelBuffer → PNG</h3>
+      <pre><code>let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+let context = CIContext()
+let cgImage = context.createCGImage(ciImage, from: ciImage.extent)
+// 写入 PNG 到 frames/ 目录</code></pre>
+
+      <h2 id="notes">课程笔记</h2>
+
+      <div class="callout">
+        <strong>NAL 结构</strong> · H.264 码流以 0x00000001 起始码分隔 NAL 单元，每个 NAL 单元含 1 字节头（forbidden_zero_bit + nal_ref_idc + nal_unit_type）。
+      </div>
+
+      <div class="callout">
+        <strong>硬解 vs 软解</strong> · VideoToolbox 在 Apple Silicon / Intel 都走 GPU 解码；遇到 H.265 10bit 等不支持的 profile 必须 fallback 到 FFmpeg 软解。
+      </div>
+
+      <div class="callout">
+        <strong>踩坑：startCode 长度</strong> · NAL 起始码可能是 3 字节（0x000001）或 4 字节（0x00000001），扫描器要兼容两种。
+      </div>
+
+      <p class="lead" style="margin-top: var(--space-5)">
+        <em>本项目依赖本地 video.h264 文件 + Xcode 编译，无在线 demo。</em>
+      </p>
+    </main>
+
+    <footer class="site-footer">
+      <p>
+        2026 · Jason Xun ·
+        <a href="https://github.com/estelledc/HardwareDecoder" target="_blank" rel="noopener">GitHub</a>
+      </p>
+    </footer>
+  </div>
+
+  <script>
+    mermaid.initialize({ startOnLoad: true, theme: 'dark', themeVariables: { primaryColor: '#7ee787', primaryTextColor: '#c9d1d9', background: '#0d1117', mainBkg: '#161b22', lineColor: '#8b949e' } });
+  </script>
+</body>
+</html>
