@@ -60,12 +60,6 @@ body {
   margin-bottom: var(--space-5);
 }
 .topbar .brand { font-family: var(--font-mono); font-size: var(--fs-caption); letter-spacing: 0.1em; color: var(--accent); text-transform: uppercase; }
-.return-to-hub {
-  font-family: var(--font-mono); font-size: var(--fs-caption); color: var(--muted);
-  text-decoration: none; letter-spacing: 0.05em; text-transform: lowercase;
-  border-bottom: 1px solid transparent; transition: border-color 0.15s, color 0.15s;
-}
-.return-to-hub:hover { color: var(--accent); border-bottom-color: var(--accent); }
 
 h1 { font-family: var(--font-mono); font-size: var(--fs-h1); margin: 0 0 var(--space-2); letter-spacing: -0.01em; }
 h2 { font-family: var(--font-mono); font-size: var(--fs-h2); margin: var(--space-5) 0 var(--space-3); color: var(--accent); }
