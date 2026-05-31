@@ -77,3 +77,16 @@ pre code { background: transparent; padding: 0; }
   h1 { font-size: 2rem; }
   h2 { font-size: 1.4rem; }
 }
+
+/* —— Light mode override (system-following) —— */
+@media (prefers-color-scheme: light) {
+  :root[data-system="tech-utility"] {
+    color-scheme: light;
+    --ink: #1f2328;
+    --paper: #f6f3ec;
+    --accent: #1a7f37;
+    --muted: #5c6068;
+    --rule: rgba(31, 35, 40, 0.14);
+    --code-bg: #ece8de;
+  }
+}
