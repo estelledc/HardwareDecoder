@@ -1,46 +1,27 @@
-# 硬件加速H.264解码器
+# H.264 硬件解码 demo
 
-## 项目概述
+H.264 裸流不能直接送进 VideoToolbox — 解码器需要先拿到 SPS/PPS 构造的 format description, 才知道每一帧 NAL 怎么解。这个项目用 Swift + VideoToolbox 把这套流程跑通: 读 `.h264` 文件 → 切 NAL 单元 → 拿 SPS/PPS 建解码会话 → 帧 NAL 依次送进去 → 回调里把 CVPixelBuffer 存成 PNG。卡点主要在 NAL 切分边界和 Annex-B 起始码处理, 跑通的判据是 `decoded_frames/` 里出现按帧序号排列的 PNG 且画面正确。
 
-基于 VideoToolbox 的 H.264 硬件解码器示例，Swift 实现。在 macOS/iOS 上调用系统硬件加速能力解码 H.264，将解码帧保存为 PNG。
+## 怎么跑
 
-## 功能特点
+Xcode 编译运行就行, VideoToolbox 是 macOS / iOS 自带的, 没额外依赖。
 
-- 支持硬件加速H.264视频解码
-- 自动提取视频流中的SPS和PPS参数集
-- 解析和处理H.264 NAL单元
-- 支持解码I帧和P帧
-- 将解码后的视频帧保存为PNG图像
-- 自动回退到软解码（当硬解码不可用时）
-- 详细的日志输出，方便调试和学习
+1. 把 H.264 裸流改名 `video.h264`, 放到 `~/Desktop/forshare/HardwareDecoder/HardwareDecoder/`
+2. Xcode 编译运行
+3. 解码帧输出到桌面 `decoded_frames/`
 
-## 系统要求
+默认按 1920x1080 处理, 改分辨率改 `kWidth` / `kHeight` 两个常量。
 
-- macOS 10.14+或iOS 12.0+
-- Xcode 12.0+
-- Swift 5.0+
+## 关键设计选择
 
-## 使用方法
-
-1. 将H.264编码的视频文件命名为`video.h264`并放置在`~/Desktop/forshare/HardwareDecoder/HardwareDecoder/`目录下
-2. 编译并运行程序
-3. 解码后的视频帧将保存在桌面的`decoded_frames`文件夹中
-
-## 核心功能实现
-
-- **格式描述创建**：使用SPS和PPS参数集创建视频格式描述
-- **解码会话初始化**：配置并创建VideoToolbox解码会话
-- **NAL单元解析**：从H.264比特流中提取NAL单元
-- **帧解码处理**：将NAL单元送入解码器并处理回调
-- **图像导出**：将解码后的CVPixelBuffer转换为PNG图像
-
-## 实现原理
-
-程序首先解析H.264文件，提取所有NAL单元。然后识别其中的SPS和PPS数据，用于初始化解码器。之后按顺序将视频帧NAL单元送入硬件解码器，VideoToolbox框架会调用回调函数返回解码后的视频帧，程序将这些帧转换为PNG图像保存到磁盘。
+- **SPS/PPS 单独抽出来初始化**: SPS/PPS 是 sequence/picture parameter set, 装的是解码参数 (分辨率/profile/熵编码方式等), 给解码器配 format description 用。必须先扫流找到 type=7 (SPS) 和 type=8 (PPS) 的 NAL, 用 `CMVideoFormatDescriptionCreateFromH264ParameterSets` 建 format description, 后面帧 NAL 才有解码上下文。
+- **硬解失败回落软解**: 不是所有机器 / 所有 profile 都支持硬解, VideoToolbox 创建 session 会直接失败。检测到失败就走软解路径, 保证至少能出一张图, 方便后面定位是 profile 不支持还是 NAL 切错了。
+- **回调异步, 主线程不能提前退**: VideoToolbox 解码回调是异步派发, 帧从工作线程往外抛。主线程要等所有帧的 PNG 写完才能退, 不然最后几帧丢盘上。
+- **CVPixelBuffer → PNG 走 CIImage**: 解码出来是 YUV 的 CVPixelBuffer, 存盘前用 CIImage + CIContext 转 RGB PNG, 顺手得到一个能直接看的中间产物用来 debug。
 
 ## 程序流程
 
-下面是程序执行流程的图示：
+解码会话从 SPS/PPS 拿到帧格式描述, 之后帧 NAL 单元才能依次送进解码器。
 
 ```mermaid
 flowchart TD
@@ -68,10 +49,8 @@ flowchart TD
     H --> T
 ```
 
-## 注意事项
+## 还能做的
 
-- 程序默认处理1920x1080分辨率的视频，如需其他分辨率，请修改`kWidth`和`kHeight`常量
-- 确保H.264视频文件是有效的，且包含必要的SPS和PPS数据
-- 当处理大型视频文件时，可能需要增加内存限制
-- 解码过程在异步线程中进行，请确保主线程不会提前退出
-- 解码后的帧会保存在桌面的`decoded_frames`文件夹，确保该目录有写入权限
+- 现在只处理 1920x1080, SPS 里其实带了分辨率信息, 应该解析出来自动配, 不要写死常量
+- B 帧没测过 — 当前 demo 素材只有 I/P 帧, 带 B 帧的流涉及 DTS/PTS 重排, 现在的逐帧顺序送大概率出错
+- 输出 PNG 太重 (单帧几 MB), 学习 demo 够用, 想看实时画面应该接 AVSampleBufferDisplayLayer 直接渲染
