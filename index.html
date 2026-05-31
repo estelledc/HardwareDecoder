@@ -5,10 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>HardwareDecoder · H.264 硬件解码器</title>
   <meta name="description" content="基于 VideoToolbox 的 H.264 硬件解码器课程项目" />
+  <link rel="stylesheet" href="assets/jx/tokens.css">
+  <link rel="stylesheet" href="assets/jx/base.css">
+  <link rel="stylesheet" href="assets/jx/components.css">
   <link rel="stylesheet" href="assets/style.css" />
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 </head>
 <body>
+  <div style="position: fixed; top: 16px; left: 24px; z-index: 100;">
+    <a class="jx-return-to-hub" href="https://estelledc.github.io/">回 Jason 主站</a>
+  </div>
   <div class="shell">
     <header class="topbar">
       <span class="brand">HARDWARE_DECODER</span>
@@ -82,11 +88,16 @@ let cgImage = context.createCGImage(ciImage, from: ciImage.extent)
       </p>
     </main>
 
-    <footer class="site-footer">
-      <p>
-        2026 · Jason Xun ·
-        <a href="https://github.com/estelledc/HardwareDecoder" target="_blank" rel="noopener">GitHub</a>
-      </p>
+    <footer class="jx-footer">
+      <div class="jx-footer__colophon">
+        <strong>HardwareDecoder</strong>
+        <span lang="en">H264 LAB · MMXXVI</span>
+      </div>
+      <nav class="jx-footer__index">
+        <a href="https://estelledc.github.io/">回 hub</a>
+        <a href="https://github.com/estelledc/HardwareDecoder">github</a>
+      </nav>
+      <time class="jx-footer__stamp" datetime="2026-05-31" lang="en">2026·05·31</time>
     </footer>
   </div>
 

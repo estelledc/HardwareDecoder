@@ -1,3 +1,19 @@
+/* HardwareDecoder · Jason DS layer 2 override：Tech Utility 暗色默认 */
+:root[data-system="tech-utility"] {
+  --jx-paper: #0d1117;
+  --jx-surface: #161922;
+  --jx-surface-sunk: #161b22;
+  --jx-ink: #c9d1d9;
+  --jx-ink-2: #b0b4bd;
+  --jx-ink-muted: #8b949e;
+  --jx-ink-faint: #6e7681;
+  --jx-rule: rgba(255,255,255,0.08);
+  --jx-rule-soft: rgba(255,255,255,0.04);
+  --jx-rule-strong: var(--jx-ink);
+  --jx-accent: #7ee787;
+  --jx-accent-hub: #6c8aff;
+}
+
 /* HardwareDecoder · Tech Utility */
 
 :root[data-system="tech-utility"] {
